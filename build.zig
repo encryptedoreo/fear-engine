@@ -33,7 +33,7 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    const exe = b.addExecutable(.{ .name = "supernova", .root_module = root_mod });
+    const exe = b.addExecutable(.{ .name = "fear", .root_module = root_mod });
     b.installArtifact(exe);
 
     const run_exe = b.addRunArtifact(exe);
