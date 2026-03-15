@@ -1,7 +1,7 @@
 # Supernova
 A UCI chess engine written in Zig.
 
-## Roadmap
+## Roadmap to 1.0
 ### Board Representation
 - [x] Represent the board
 - [x] Represent the pieces
