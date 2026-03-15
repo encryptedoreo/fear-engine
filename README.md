@@ -1,2 +1,2 @@
-# Supernova
+# Fear
 A UCI chess engine written in Zig.
