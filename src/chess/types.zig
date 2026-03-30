@@ -14,7 +14,7 @@ pub const Color = enum {
 };
 
 pub const Piece = struct { piece_type: PieceType, color: Color, location: ?Square };
-pub const Square = struct {
+pub const Square = packed struct {
     file: u3,
     rank: u3,
 
@@ -39,13 +39,49 @@ pub const Square = struct {
     }
 };
 
+pub const MoveFlag = enum(u4) {
+    Quiet = 0,
+    DoublePawnPush = 1,
+    CastleKing = 2,
+    CastleQueen = 3,
+    Capture = 4,
+    EPCapture = 5,
+    PromoKnight = 8,
+    PromoBishop = 9,
+    PromoRook = 10,
+    PromoQueen = 11,
+    PromoCaptureKnight = 12,
+    PromoCaptureBishop = 13,
+    PromoCaptureRook = 14,
+    PromoCaptureQueen = 15,
+};
+
 pub const Move = packed struct {
     from: Square,
     to: Square,
-    promotion: ?PieceType,
+    move_flag: MoveFlag,
 
     pub inline fn isPromotion(self: Move) bool {
-        return self.promotion != null;
+        return @intFromEnum(self.move_flag) & 8 == 8;
+    }
+
+    pub inline fn isCapture(self: Move) bool {
+        return @intFromEnum(self.move_flag) & 4 == 4;
+    }
+
+    pub inline fn promoteTo(self: Move) ?PieceType {
+        if (!self.isPromotion()) return null;
+        return switch (@intFromEnum(self.move_flag) & 3) {
+            0 => .Knight,
+            1 => .Bishop,
+            2 => .Rook,
+            3 => .Queen,
+            else => unreachable,
+        };
+    }
+
+    pub inline fn isCastle(self: Move) bool {
+        return @intFromEnum(self.move_flag) & 14 == 2;
     }
 
     pub fn toAlgebraic(self: Move) []u8 {
@@ -59,35 +95,16 @@ pub const Move = packed struct {
         buf[3] = toAlg[1];
 
         if (self.isPromotion()) {
-            buf[4] = switch (self.promotion.?) {
-                .Queen => 'q',
-                .Rook => 'r',
-                .Bishop => 'b',
-                .Knight => 'n',
+            buf[4] = switch (@intFromEnum(self.move_flag) & 3) {
+                0 => 'q',
+                1 => 'r',
+                2 => 'b',
+                3 => 'n',
                 else => '?',
             };
             return buf[0..5];
         }
         return buf[0..4];
-    }
-
-    pub fn fromAlgebraic(s: []const u8) ?Move {
-        if (s.len < 4) return null;
-        const fromSq = Square.fromAlgebraic(s[0..2]).?;
-        const toSq = Square.fromAlgebraic(s[2..4]).?;
-
-        var promotion: ?PieceType = null;
-        if (s.len == 5) {
-            promotion = switch (s[4]) {
-                'q' => .Queen,
-                'r' => .Rook,
-                'b' => .Bishop,
-                'n' => .Knight,
-                else => return null,
-            };
-        }
-
-        return .{ .from = fromSq, .to = toSq, .promotion = promotion };
     }
 };
 
@@ -140,35 +157,39 @@ pub const Bitboard = struct {
 };
 
 pub const Board = struct {
+    mailbox: [64]?Piece,
     pieces: [6]Bitboard,
     colours: [2]Bitboard,
     ep_square: ?Square,
-    castling: [2]Bitboard,
+    castling: [2]u8,
     half_moves: u16,
     stm: Color,
 
     pub fn pieceAt(self: Board, sq: Square) ?Piece {
-        inline for (0..6, self.pieces) |i, bb| if (bb.has(sq)) return .{
-            .piece_type = @enumFromInt(i),
-            .color = if (self.colours[0].has(sq)) .White else .Black,
-            .location = sq,
-        };
-        return null;
+        return self.mailbox[sq.toIndex()];
     }
 
     pub inline fn empty() Board {
         return .{
+            .mailbox = @splat(null),
             .pieces = @splat(Bitboard.empty()),
             .colours = @splat(Bitboard.empty()),
             .stm = .White,
             .half_moves = 0,
             .ep_square = null,
-            .castling = @splat(Bitboard.empty()),
+            .castling = .{ 0, 0 },
         };
     }
 
     pub fn setPiece(self: *Board, piece: Piece) void {
         self.pieces[@intFromEnum(piece.piece_type)].setSq(piece.location.?);
         self.colours[@intFromEnum(piece.color)].setSq(piece.location.?);
+        self.mailbox[piece.location.?.toIndex()] = piece;
+    }
+
+    pub fn removePiece(self: *Board, piece: Piece) void {
+        self.pieces[@intFromEnum(piece.piece_type)].clearSq(piece.location.?);
+        self.colours[@intFromEnum(piece.color)].clearSq(piece.location.?);
+        self.mailbox[piece.location.?.toIndex()] = null;
     }
 };

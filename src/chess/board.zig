@@ -6,7 +6,7 @@ pub fn parseFEN(fen: []const u8) types.Board {
     var tokens = std.mem.tokenizeAny(u8, fen, &std.ascii.whitespace);
     var board: types.Board = .empty();
 
-    var i: usize = 63;
+    var i: usize = 63; // decrement counter
     for (tokens.next().?) |c| {
         if (c == '/') continue;
         if (std.ascii.isDigit(c)) {
@@ -14,7 +14,7 @@ pub fn parseFEN(fen: []const u8) types.Board {
             continue;
         }
 
-        const sq: types.Square = .fromIndex(i);
+        const sq: types.Square = .fromIndex(i ^ 7); // flip rank to account for traversing FEN in reverse order
         const color: types.Color = if (std.ascii.isUpper(c)) .White else .Black;
         const piece_type: types.PieceType = switch (std.ascii.toLower(c)) {
             'p' => .Pawn,
@@ -45,7 +45,7 @@ pub fn parseFEN(fen: []const u8) types.Board {
             'Q', 'q' => 0,
             else => std.ascii.toLower(c) - 'a',
         };
-        board.castling[color].setSq(.{ .file = std.math.cast(u3, rook_file).?, .rank = if (color == 0) 7 else 0 });
+        board.castling[color] |= @as(u8, 1) << std.math.cast(u3, rook_file).?;
     }
 
     board.ep_square = .fromAlgebraic(tokens.next().?);
@@ -55,17 +55,54 @@ pub fn parseFEN(fen: []const u8) types.Board {
 }
 
 pub fn makeMove(board: *types.Board, move: types.Move) void {
-    const piece = board.pieceAt(move.from);
-    if (piece == null) return board;
+    var piece = board.pieceAt(move.from) orelse return;
+    board.removePiece(piece);
 
-    new_board.clearSquare(mv.from);
-    new_board.setSquare(mv.to, piece.?);
+    board.stm = board.stm.opposite();
+    board.half_moves = if (piece.piece_type == .Pawn or move.isCapture()) 0 else board.half_moves + 1;
 
-    if (mv.isPromotion()) {
-        new_board.setSquare(mv.to, .{ .piece_type = mv.promotion.?, .color = piece.?.color, .location = mv.to });
+    if (move.isCastle()) {
+        // the king always ends up of the c- and g- files after queenside and kingside
+        // castling respectively, so we can just set the location of the king accordingly
+        piece.location = .{ .file = if (move.move_flag == .CastleKing) 6 else 2, .rank = move.from.rank };
+        board.setPiece(piece);
+
+        // `board.castling[piece.color]` should only ever have 2 bits set at most, so we can
+        // use `@ctz` and `@clz` to find the file of the queenside and kingside rooks; in the
+        // event that there is only one bit set, these are equivalent
+        const rook_file = blk: {
+            if (move.move_flag == .CastleKing) break :blk @ctz(board.castling[@intFromEnum(piece.color)]);
+            break :blk 7 - @clz(board.castling[@intFromEnum(piece.color)]);
+        };
+
+        board.removePiece(.{
+            .piece_type = .Rook,
+            .color = piece.color,
+            .location = .{ .file = std.math.cast(u3, rook_file).?, .rank = move.from.rank },
+        });
+
+        board.setPiece(.{
+            .piece_type = .Rook,
+            .color = piece.color,
+            .location = .{ .file = if (move.move_flag == .CastleKing) 5 else 3, .rank = move.from.rank },
+        });
+    } else {
+        // remove castling rights if the king or a rook moves accordingly
+        if (piece.piece_type == .King) board.castling[@intFromEnum(piece.color)] = 0 else if (piece.piece_type == .Rook and
+            move.from.rank == if (piece.color == .White) @as(u3, 0) else @as(u3, 7)) board.castling[@intFromEnum(piece.color)] &= ~(@as(u8, 1) << std.math.cast(u3, move.from.file).?);
+
+        piece.location = move.to;
+        if (move.isPromotion()) piece.piece_type = move.promoteTo().?;
+        if (move.isCapture()) {
+            const captured = board.pieceAt(if (move.move_flag == .EPCapture) board.ep_square.? else move.to).?;
+            board.removePiece(captured);
+        }
+
+        board.setPiece(piece);
+
+        board.ep_square = if (move.move_flag == .DoublePawnPush) .{
+            .file = move.from.file,
+            .rank = if (move.from.rank == 6) 5 else 2,
+        } else null;
     }
-
-    new_board.stm = board.stm.opposite();
-
-    return new_board;
 }

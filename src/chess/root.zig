@@ -11,3 +11,4 @@ pub const Board = types.Board;
 const board = @import("board.zig");
 
 pub const parseFEN = board.parseFEN;
+pub const makeMove = board.makeMove;
