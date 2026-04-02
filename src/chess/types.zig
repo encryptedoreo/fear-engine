@@ -57,21 +57,31 @@ pub const MoveFlag = enum(u4) {
 };
 
 pub const Move = packed struct {
-    from: Square,
-    to: Square,
-    move_flag: MoveFlag,
+    move_data: u16,
+
+    pub inline fn from(self: Move) Square {
+        return Square.fromIndex(self.move_data >> 10);
+    }
+
+    pub inline fn to(self: Move) Square {
+        return Square.fromIndex((self.move_data >> 4) & 63);
+    }
+
+    pub inline fn moveFlag(self: Move) MoveFlag {
+        return @enumFromInt(self.move_data & 15);
+    }
 
     pub inline fn isPromotion(self: Move) bool {
-        return @intFromEnum(self.move_flag) & 8 == 8;
+        return @intFromEnum(self.moveFlag()) & 8 == 8;
     }
 
     pub inline fn isCapture(self: Move) bool {
-        return @intFromEnum(self.move_flag) & 4 == 4;
+        return @intFromEnum(self.moveFlag()) & 4 == 4;
     }
 
     pub inline fn promoteTo(self: Move) ?PieceType {
         if (!self.isPromotion()) return null;
-        return switch (@intFromEnum(self.move_flag) & 3) {
+        return switch (@intFromEnum(self.moveFlag()) & 3) {
             0 => .Knight,
             1 => .Bishop,
             2 => .Rook,
@@ -81,13 +91,13 @@ pub const Move = packed struct {
     }
 
     pub inline fn isCastle(self: Move) bool {
-        return @intFromEnum(self.move_flag) & 14 == 2;
+        return @intFromEnum(self.moveFlag()) & 14 == 2;
     }
 
     pub fn toAlgebraic(self: Move) []u8 {
         var buf: [5]u8 = undefined;
-        const fromAlg = self.from.toAlgebraic();
-        const toAlg = self.to.toAlgebraic();
+        const fromAlg = self.from().toAlgebraic();
+        const toAlg = self.to().toAlgebraic();
         buf[0] = fromAlg[0];
         buf[1] = fromAlg[1];
 
@@ -95,7 +105,7 @@ pub const Move = packed struct {
         buf[3] = toAlg[1];
 
         if (self.isPromotion()) {
-            buf[4] = switch (@intFromEnum(self.move_flag) & 3) {
+            buf[4] = switch (@intFromEnum(self.moveFlag()) & 3) {
                 0 => 'q',
                 1 => 'r',
                 2 => 'b',
@@ -191,5 +201,23 @@ pub const Board = struct {
         self.pieces[@intFromEnum(piece.piece_type)].clearSq(piece.location.?);
         self.colours[@intFromEnum(piece.color)].clearSq(piece.location.?);
         self.mailbox[piece.location.?.toIndex()] = null;
+    }
+};
+
+pub const MoveList = struct {
+    moves: [256]Move,
+    count: u8,
+
+    pub fn init() MoveList {
+        return MoveList{ .moves = @splat(.{
+            .from = .{ .file = 0, .rank = 0 },
+            .to = .{ .file = 0, .rank = 0 },
+            .move_flag = .Quiet,
+        }), .count = 0 };
+    }
+
+    pub fn addMove(self: *MoveList, move: Move) void {
+        self.moves[@as(u8, self.count)] = move;
+        self.count += 1;
     }
 };

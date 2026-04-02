@@ -55,7 +55,7 @@ pub fn parseFEN(fen: []const u8) types.Board {
 }
 
 pub fn makeMove(board: *types.Board, move: types.Move) void {
-    var piece = board.pieceAt(move.from) orelse return;
+    var piece = board.pieceAt(move.from()) orelse return;
     board.removePiece(piece);
 
     board.stm = board.stm.opposite();
@@ -64,45 +64,45 @@ pub fn makeMove(board: *types.Board, move: types.Move) void {
     if (move.isCastle()) {
         // the king always ends up of the c- and g- files after queenside and kingside
         // castling respectively, so we can just set the location of the king accordingly
-        piece.location = .{ .file = if (move.move_flag == .CastleKing) 6 else 2, .rank = move.from.rank };
+        piece.location = .{ .file = if (move.moveFlag() == .CastleKing) 6 else 2, .rank = move.from().rank };
         board.setPiece(piece);
 
         // `board.castling[piece.color]` should only ever have 2 bits set at most, so we can
         // use `@ctz` and `@clz` to find the file of the queenside and kingside rooks; in the
         // event that there is only one bit set, these are equivalent
         const rook_file = blk: {
-            if (move.move_flag == .CastleKing) break :blk @ctz(board.castling[@intFromEnum(piece.color)]);
+            if (move.moveFlag() == .CastleKing) break :blk @ctz(board.castling[@intFromEnum(piece.color)]);
             break :blk 7 - @clz(board.castling[@intFromEnum(piece.color)]);
         };
 
         board.removePiece(.{
             .piece_type = .Rook,
             .color = piece.color,
-            .location = .{ .file = std.math.cast(u3, rook_file).?, .rank = move.from.rank },
+            .location = .{ .file = std.math.cast(u3, rook_file).?, .rank = move.from().rank },
         });
 
         board.setPiece(.{
             .piece_type = .Rook,
             .color = piece.color,
-            .location = .{ .file = if (move.move_flag == .CastleKing) 5 else 3, .rank = move.from.rank },
+            .location = .{ .file = if (move.moveFlag() == .CastleKing) 5 else 3, .rank = move.from().rank },
         });
     } else {
         // remove castling rights if the king or a rook moves accordingly
         if (piece.piece_type == .King) board.castling[@intFromEnum(piece.color)] = 0 else if (piece.piece_type == .Rook and
-            move.from.rank == if (piece.color == .White) @as(u3, 0) else @as(u3, 7)) board.castling[@intFromEnum(piece.color)] &= ~(@as(u8, 1) << std.math.cast(u3, move.from.file).?);
+            move.from().rank == if (piece.color == .White) @as(u3, 0) else @as(u3, 7)) board.castling[@intFromEnum(piece.color)] &= ~(@as(u8, 1) << std.math.cast(u3, move.from().file).?);
 
-        piece.location = move.to;
+        piece.location = move.to();
         if (move.isPromotion()) piece.piece_type = move.promoteTo().?;
         if (move.isCapture()) {
-            const captured = board.pieceAt(if (move.move_flag == .EPCapture) board.ep_square.? else move.to).?;
+            const captured = board.pieceAt(if (move.moveFlag() == .EPCapture) board.ep_square.? else move.to()).?;
             board.removePiece(captured);
         }
 
         board.setPiece(piece);
 
-        board.ep_square = if (move.move_flag == .DoublePawnPush) .{
-            .file = move.from.file,
-            .rank = if (move.from.rank == 6) 5 else 2,
+        board.ep_square = if (move.moveFlag() == .DoublePawnPush) .{
+            .file = move.from().file,
+            .rank = if (move.from().rank == 6) 5 else 2,
         } else null;
     }
 }
