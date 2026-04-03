@@ -56,15 +56,15 @@ pub fn parseFEN(fen: []const u8) types.Board {
 
 pub fn makeMove(board: *types.Board, move: types.Move) void {
     var piece = board.pieceAt(move.from()) orelse return;
-    board.removePiece(piece);
+    board.removePiece(move.from());
 
     board.stm = board.stm.opposite();
-    board.half_moves = if (piece.piece_type == .Pawn or move.isCapture()) 0 else board.half_moves + 1;
+    board.half_moves = if (piece.piece_type == .Pawn or move.isCapture()) @as(u16, 0) else board.half_moves + 1;
 
     if (move.isCastle()) {
         // the king always ends up of the c- and g- files after queenside and kingside
         // castling respectively, so we can just set the location of the king accordingly
-        piece.location = .{ .file = if (move.moveFlag() == .CastleKing) 6 else 2, .rank = move.from().rank };
+        piece.location = .{ .file = if (move.moveFlag() == .CastleKing) @as(u3, 6) else @as(u3, 2), .rank = move.from().rank };
         board.setPiece(piece);
 
         // `board.castling[piece.color]` should only ever have 2 bits set at most, so we can
@@ -76,15 +76,14 @@ pub fn makeMove(board: *types.Board, move: types.Move) void {
         };
 
         board.removePiece(.{
-            .piece_type = .Rook,
-            .color = piece.color,
-            .location = .{ .file = std.math.cast(u3, rook_file).?, .rank = move.from().rank },
+            .file = std.math.cast(u3, rook_file).?,
+            .rank = move.from().rank,
         });
 
         board.setPiece(.{
             .piece_type = .Rook,
             .color = piece.color,
-            .location = .{ .file = if (move.moveFlag() == .CastleKing) 5 else 3, .rank = move.from().rank },
+            .location = .{ .file = if (move.moveFlag() == .CastleKing) @as(u3, 5) else @as(u3, 3), .rank = move.from().rank },
         });
     } else {
         // remove castling rights if the king or a rook moves accordingly
@@ -93,16 +92,16 @@ pub fn makeMove(board: *types.Board, move: types.Move) void {
 
         piece.location = move.to();
         if (move.isPromotion()) piece.piece_type = move.promoteTo().?;
-        if (move.isCapture()) {
-            const captured = board.pieceAt(if (move.moveFlag() == .EPCapture) board.ep_square.? else move.to()).?;
-            board.removePiece(captured);
-        }
+        if (move.moveFlag() == .EPCapture) board.removePiece(.{
+            .file = board.ep_square.?.file,
+            .rank = if (move.from().rank == 6) @as(u3, 5) else @as(u3, 2),
+        });
 
         board.setPiece(piece);
 
         board.ep_square = if (move.moveFlag() == .DoublePawnPush) .{
             .file = move.from().file,
-            .rank = if (move.from().rank == 6) 5 else 2,
+            .rank = if (move.from().rank == 6) @as(u3, 5) else @as(u3, 2),
         } else null;
     }
 }
