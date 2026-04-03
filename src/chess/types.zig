@@ -22,6 +22,10 @@ pub const Square = packed struct {
         return @as(usize, self.rank) * 8 + @as(usize, self.file);
     }
 
+    pub inline fn to0x88(self: Square) u8 {
+        return @as(u8, self.rank) * 16 + @as(u8, self.file);
+    }
+
     pub inline fn toAlgebraic(self: Square) []const u8 {
         return &[_]u8{ 'a' + @as(u8, self.file), '1' + @as(u8, self.rank) };
     }
@@ -118,72 +122,34 @@ pub const Move = packed struct {
     }
 };
 
-pub const Bitboard = struct {
-    bits: u64,
-
-    pub inline fn empty() Bitboard {
-        return .{ .bits = 0 };
-    }
-
-    pub inline fn full() Bitboard {
-        return .empty().inverse();
-    }
-
-    pub inline fn fromSq(sq: Square) Bitboard {
-        return .{ .bits = @as(u64, 1) << std.math.cast(u6, sq.toIndex()).? };
-    }
-
-    pub inline fn orWith(self: Bitboard, other: Bitboard) Bitboard {
-        return .{ .bits = self.bits | other.bits };
-    }
-
-    pub inline fn andWith(self: Bitboard, other: Bitboard) Bitboard {
-        return .{ .bits = self.bits & other.bits };
-    }
-
-    pub inline fn without(self: Bitboard, other: Bitboard) Bitboard {
-        return .{ .bits = self.bits & ~other.bits };
-    }
-
-    pub inline fn has(self: Bitboard, sq: Square) bool {
-        return self.andWith(.fromSq(sq)).bits != @as(u64, 0);
-    }
-
-    pub inline fn count(self: Bitboard) u6 {
-        return @popCount(self.bits);
-    }
-
-    pub inline fn inverse(self: Bitboard) Bitboard {
-        return .{ .bits = ~self.bits };
-    }
-
-    pub fn setSq(self: *Bitboard, sq: Square) void {
-        self.bits |= @as(u64, 1) << std.math.cast(u6, sq.toIndex()).?;
-    }
-
-    pub fn clearSq(self: *Bitboard, sq: Square) void {
-        self.bits &= ~(@as(u64, 1) << std.math.cast(u6, sq.toIndex()).?);
-    }
-};
-
 pub const Board = struct {
-    mailbox: [64]?Piece,
-    pieces: [6]Bitboard,
-    colours: [2]Bitboard,
+    mailbox: [64]u8,
     ep_square: ?Square,
     castling: [2]u8,
     half_moves: u16,
     stm: Color,
 
     pub fn pieceAt(self: Board, sq: Square) ?Piece {
-        return self.mailbox[sq.toIndex()];
+        const piece = self.mailbox[sq.toIndex()];
+        if (piece == 0) return null;
+        return .{
+            .piece_type = switch (piece & 31) {
+                1, 2 => .Pawn,
+                4 => .Knight,
+                8 => .Bishop,
+                16 => .Rook,
+                24 => .Queen,
+                32 => .King,
+                else => unreachable,
+            },
+            .color = if (piece & 128 == 128) .Black else .White,
+            .location = sq,
+        };
     }
 
     pub inline fn empty() Board {
         return .{
-            .mailbox = @splat(null),
-            .pieces = @splat(Bitboard.empty()),
-            .colours = @splat(Bitboard.empty()),
+            .mailbox = @splat(0),
             .stm = .White,
             .half_moves = 0,
             .ep_square = null,
@@ -192,15 +158,23 @@ pub const Board = struct {
     }
 
     pub fn setPiece(self: *Board, piece: Piece) void {
-        self.pieces[@intFromEnum(piece.piece_type)].setSq(piece.location.?);
-        self.colours[@intFromEnum(piece.color)].setSq(piece.location.?);
-        self.mailbox[piece.location.?.toIndex()] = piece;
+        var new_piece: u8 = 0;
+
+        if (piece.color == .Black) new_piece |= 128;
+        new_piece |= switch (piece.piece_type) {
+            .Pawn => if (piece.color == .White) 0b00000001 else 0b00000010,
+            .Knight => 0b00000100,
+            .Bishop => 0b00001000,
+            .Rook => 0b00010000,
+            .Queen => 0b00011000,
+            .King => 0b00100000,
+        };
+
+        self.mailbox[piece.location.?.toIndex()] = new_piece;
     }
 
-    pub fn removePiece(self: *Board, piece: Piece) void {
-        self.pieces[@intFromEnum(piece.piece_type)].clearSq(piece.location.?);
-        self.colours[@intFromEnum(piece.color)].clearSq(piece.location.?);
-        self.mailbox[piece.location.?.toIndex()] = null;
+    pub fn removePiece(self: *Board, location: Square) void {
+        self.mailbox[location.toIndex()] = 0;
     }
 };
 
