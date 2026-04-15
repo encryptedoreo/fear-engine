@@ -2,8 +2,10 @@ const std = @import("std");
 
 const types = @import("types.zig");
 
-pub fn superpieceRays(sq: types.Square) u64 {
-    const offsets = @Vector(64, u8){
+const Byteboard = u64;
+
+pub fn superpieceRays(sq: u8) Byteboard {
+    const offsets: @Vector(64, u8) = .{
         0x1F, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, // north
         0x21, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, // northeast
         0x12, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // east
@@ -14,7 +16,7 @@ pub fn superpieceRays(sq: types.Square) u64 {
         0x0E, 0x0F, 0x1E, 0x2D, 0x3C, 0x4B, 0x5A, 0x69, // northwest
     };
 
-    var sup_targets = @as(@Vector(64, u8), @splat(sq.to0x88()));
+    var sup_targets = @as(@Vector(64, u8), @splat(sq));
     sup_targets +%= offsets;
 
     return @bitCast(sup_targets & @as(@Vector(64, u8), @splat(0x88)) == @as(
@@ -23,6 +25,12 @@ pub fn superpieceRays(sq: types.Square) u64 {
     ));
 }
 
-pub fn getAttackByteboards(board: types.Board) [64]u64 {
-    _ = board;
+pub fn superpieceAttacks(occupied: Byteboard, sq: u8) Byteboard {
+    const o = occupied | 0x8181818181818181;
+    const x = o ^ (o - 0x0303030303030303);
+    return x & superpieceRays(sq);
+}
+
+pub fn getAttackByteboards(board: types.Board) [64]Byteboard {
+    var attack_byteboards: [64]Byteboard = @splat(0);
 }

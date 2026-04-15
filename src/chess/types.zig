@@ -123,7 +123,7 @@ pub const Move = packed struct {
 };
 
 pub const Board = struct {
-    mailbox: [64]u8,
+    mailbox: [64]u8 align(64),
     ep_square: ?Square,
     castling: [2]u8,
     half_moves: u16,
